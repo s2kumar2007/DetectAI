@@ -1,0 +1,21 @@
+# Tiny CPU configuration for smoke tests on SYNTHETIC data. Merge AFTER a stage config.
+data:
+  num_workers: 0
+input: {size: 128, size_divisible: 32}
+aug: {mosaic: 0.2, scale_jitter: [0.85, 1.15]}
+model:
+  backbone: {name: resnet18, layers: [1, 1, 1, 1], groups: 32}
+  fpn: {out_channels: 64, use_p2: true}
+  rpn: {num_convs: 1, pre_nms_top_n: 200, post_nms_top_n_train: 100, post_nms_top_n_test: 100, neg_min: 32}
+  roi_head: {fc_dim: 256, embed_dim: 64, batch_size_per_image: 64, detections_per_img: 100}
+train:
+  batch_size: 4
+  accum_steps: 1
+  lr: 1.0e-3
+  warmup_iters: 10
+  amp: false
+  ckpt_every: 50
+  log_every: 10
+  ema_decay: 0.99
+  max_hours: null
+replay: {per_class: 6, max_images: 60}

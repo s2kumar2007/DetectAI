@@ -1,0 +1,29 @@
+# Stage 3 (Round 2, on-site): start ONLY from the verified Round 1 checkpoint; slots 40..49.
+stage: stage3
+out_dir: runs/round2
+data:
+  train_dir: round2
+init:
+  checkpoint: runs/stage2/checkpoint.pt    # the verified Round 1 checkpoint
+slots:
+  start: 40
+train:
+  max_iters: 600
+  max_hours: 0.5                           # 30 min hard budget
+  lr: 8.0e-5
+  warmup_iters: 30
+  ckpt_every: 100
+  ema_decay: 0.995
+freeze:
+  backbone_stages: 3                       # stem + layer1 + layer2
+  old_prototypes: true
+replay:
+  enable: true
+  sources: [set_a, set_b]
+  per_class: 8
+  max_images: 400
+new_data:
+  repeat: 10
+distill: {enable: true, feat_weight: 1.0, logit_weight: 1.0, temperature: 2.0}
+pseudo: {enable: true, score_thr: 0.7}
+imprint: {enable: true}

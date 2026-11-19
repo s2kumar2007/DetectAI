@@ -1,0 +1,42 @@
+# --- data / outputs (never commit real data, images or checkpoints) ---
+data/*
+!data/synthetic/
+data/synthetic/*
+!data/synthetic/.gitkeep
+runs/
+outputs/
+submission/
+bundle/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.zip
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# --- envs / editors ---
+venv/
+.venv/
+env/
+.idea/
+.vscode/
+.DS_Store
+*.log

@@ -1,0 +1,158 @@
+# Defaults for every stage. Stage configs and smoke.yaml only list differences.
+seed: 1337
+stage: stage1
+out_dir: runs/stage1
+
+data:
+  root: /path/to/anveshak_data      # placeholder: set to where you unpack the real data
+  set_a: set_a                      # sub-dirs of data.root
+  set_b: set_b
+  round2: round2
+  test: test
+  class_list: class_list.txt        # relative to data.root (or absolute)
+  format: auto                      # auto | coco | yolo | voc | csv
+  image_id_mode: stem               # stem | filename  (value written in CSV image_id)
+  train_dir: set_a                  # which sub-dir this stage trains on
+  split_file: null                  # JSON from scripts/make_val_split.py
+  num_workers: 2
+
+input:
+  size: 800                         # longest side after resize
+  size_divisible: 32
+
+aug:
+  hflip: 0.5
+  vflip: 0.5
+  rot90: true
+  scale_jitter: [0.75, 1.25]
+  mosaic: 0.3
+  color_jitter: 0.2
+  color_prob: 0.8
+
+model:
+  backbone: {name: resnet50, layers: null, groups: 32}   # name: resnet50 | resnet18 ; layers overrides block counts
+  fpn: {out_channels: 256, use_p2: true}
+  rpn:
+    num_convs: 2
+    pre_nms_top_n: 1000
+    post_nms_top_n_train: 300
+    post_nms_top_n_test: 500
+    nms_iou: 0.7
+    neg_dilate: 2.0                 # negatives only outside GT boxes dilated by this factor
+    neg_min: 64
+    neg_per_pos: 3.0
+    neg_weight: 0.5
+    reg_weight: 1.0
+    ctr_weight: 1.0
+    iou_weight: 1.0
+    min_box_size: 2.0
+    max_gt: 300
+  roi_head:
+    roi_size: 7
+    fc_dim: 1024
+    embed_dim: 256
+    num_slots: 64
+    batch_size_per_image: 128
+    pos_fraction: 0.25
+    pos_iou: 0.5
+    neg_iou: 0.1
+    init_scale: 10.0
+    max_scale: 50.0
+    cls_weight: 1.0
+    box_weight: 1.0
+    obj_weight: 1.0
+    detections_per_img: 300
+  mining:
+    enable: true
+    start_frac: 0.2                 # fraction of schedule before mining starts
+    topk: 5
+    obj_min: 0.2
+    cos_max: 0.8
+    soft_target: 0.5
+    margin_known: 0.5
+    margin_unknown: 0.2
+    weight: 0.5
+    suppress_iou: 0.3
+  ablation:
+    prob_mahalanobis: false         # OFF by default (documented ablation hook)
+    maha_momentum: 0.01
+
+init:
+  checkpoint: null                  # Stage 1 must be null; Stage 2/3 = our previous-stage checkpoint.pt
+slots:
+  start: null                       # first slot for new classes (null = next free slot)
+
+train:
+  max_iters: 60000
+  batch_size: 4
+  accum_steps: 4
+  lr: 4.0e-4
+  weight_decay: 0.05
+  warmup_iters: 1000
+  min_lr_frac: 0.01
+  grad_clip: 10.0
+  amp: auto                         # auto = bf16 autocast on CUDA, off on CPU
+  channels_last: true
+  ema_decay: 0.9998
+  ema_warmup: true
+  ckpt_every: 1000
+  log_every: 20
+  resume: true
+  max_hours: null
+  device: auto
+  eval_at_end: true
+  lr_mult: {backbone: 1.0, fpn: 1.0, rpn: 1.0, roi_head: 1.0}
+
+freeze:
+  backbone_stages: 0                # 0 none, 1 stem, 2 stem+layer1, 3 stem+layer1+layer2
+  old_prototypes: true
+
+replay:
+  enable: false
+  sources: []                       # data.* keys, e.g. [set_a]
+  per_class: 20
+  max_images: 2000
+
+new_data:
+  repeat: 1                         # repeat factor for few-shot images
+
+distill:
+  enable: false
+  feat_weight: 1.0
+  logit_weight: 1.0
+  temperature: 2.0
+
+pseudo:
+  enable: false
+  score_thr: 0.7
+  nms_iou: 0.5
+  max_per_img: 50
+  overlap_iou: 0.5
+
+imprint:
+  enable: false
+
+eval:
+  retention: true
+  val_frac: 0.1
+
+infer:
+  tta: true
+  min_known_score: 0.01
+  topk_known: 300
+  known_nms_iou: 0.5
+  unk_nms_iou: 0.5
+  conflict_iou: 0.5
+  wbf_iou: 0.55
+  max_rows_per_image: 1000
+  batch_images: 1
+
+calibration:                        # defaults used until calibrate_unknown.py writes calibration.json
+  alpha: 1.0
+  tau_unk: 0.3
+  unk_cap: 20
+  cos_ref: 1.0
+
+postprocess:
+  validator_path: null              # path to the organisers' validate_predictions.py (if present)
+  validator_cmd: "{python} {validator} {csv}"

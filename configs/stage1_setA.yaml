@@ -1,0 +1,12 @@
+# Stage 1: train from random init on Set A (30 base classes expected -> slots 0..29).
+stage: stage1
+out_dir: runs/stage1
+data:
+  train_dir: set_a
+init:
+  checkpoint: null
+train:
+  max_iters: 60000
+  max_hours: 8.0          # stops cleanly and decays LR over the time budget
+  lr: 4.0e-4
+  ckpt_every: 1000

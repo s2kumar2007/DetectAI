@@ -1,0 +1,28 @@
+# Stage 2: continue the SAME model on Set B (10 few-shot classes -> next free slots, normally 30..39).
+stage: stage2
+out_dir: runs/stage2
+data:
+  train_dir: set_b
+init:
+  checkpoint: runs/stage1/checkpoint.pt    # our own Stage 1 checkpoint only
+slots:
+  start: null                              # next free slot after Stage 1 map
+train:
+  max_iters: 4000
+  max_hours: 2.0
+  lr: 1.0e-4
+  warmup_iters: 100
+  ckpt_every: 500
+  ema_decay: 0.999
+freeze:
+  backbone_stages: 2                       # stem + layer1
+  old_prototypes: true
+replay:
+  enable: true
+  sources: [set_a]
+  per_class: 20
+new_data:
+  repeat: 10
+distill: {enable: true, feat_weight: 1.0, logit_weight: 1.0, temperature: 2.0}
+pseudo: {enable: true, score_thr: 0.7}
+imprint: {enable: true}
