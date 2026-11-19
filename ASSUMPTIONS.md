@@ -24,3 +24,20 @@ configurable where noted. Newest entries are appended per phase.
 - A10. 16-bit / float TIFFs are min-max scaled to 8 bit and replicated to 3 channels.
 - A11. The synthetic generator lives in `src/anveshak/data/synthetic.py` (importable by tests) with the CLI
   `scripts/make_synthetic_data.py`; `data/synthetic/` is gitignored except `.gitkeep`.
+
+## Phase 2 - metric, CSV checker, split
+- A12. Conflict rule is evaluated PAIRWISE on the original prediction set: a prediction is removed if it loses to any
+  overlapping opposite-type prediction (higher score wins, ties -> earlier row), even if that opponent is itself removed
+  by a third box. This is the literal reading of the brief; it is covered by a unit test.
+- A13. Matching follows the VOC convention: a prediction is compared with its best-IoU GT; if that GT is already
+  matched (or IoU < 0.5) the prediction is a false positive. `match_mode="greedy"` (best *free* GT) is available but not
+  the default. Unknown matching uses the same procedure. Predictions are processed by descending score, ties by row order.
+- A14. A GT row whose class is `unknown` OR not in the supplied known-class set is an unknown GT. With zero unknown GT
+  (or zero unknown predictions) U-Rec / U-Prec are 0.0 and therefore OE = 0 - the brief does not define this case.
+- A15. `known_classes` for mAP_K is the set of classes the model knows at that stage; predictions of unlisted, non-unknown
+  classes are ignored by the scorer (the CSV checker rejects them in submissions).
+- A16. CSV checker: BOM is rejected, duplicate = identical (image, class, score, box); images with no rows are a warning,
+  not an error (a CSV cannot contain a row for an empty prediction set).
+- A17. Validation split: held-out classes are random among classes with >= 3 images (seeded); each is forced into >= 2
+  validation images; every other class with >= 2 images appears at least once in validation when budget allows.
+  Few-shot Set B has no split (too small) - retention is measured on the Set A validation images.
