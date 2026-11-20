@@ -61,6 +61,7 @@ model:
     cls_weight: 1.0
     box_weight: 1.0
     obj_weight: 1.0
+    neg_obj_weight: 0.0             # OLN-style: RoI objectness is trained on positives only (unlabelled objects are never pushed to 0)
     detections_per_img: 300
   mining:
     enable: true
@@ -140,6 +141,7 @@ infer:
   tta: true
   min_known_score: 0.01
   topk_known: 300
+  topk_classes: 2                   # classes kept per RoI before NMS
   known_nms_iou: 0.5
   unk_nms_iou: 0.5
   conflict_iou: 0.5

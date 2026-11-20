@@ -76,3 +76,21 @@ configurable where noted. Newest entries are appended per phase.
 - A30. Training is seeded but NOT run with deterministic kernels (speed); determinism is enforced at inference (rule 6).
 - A31. Smoke result (SYNTHETIC data only, tiny ResNet-18 GN [1,1,1,1], 600 its on CPU): loss 4.27 -> 1.78 and validation mAP 1.0
   on the 6 easy synthetic base classes (an untrained model scores 0.0). This says nothing about real-data accuracy.
+
+## Phase 5 - unknown gate, postprocess, calibration
+- A32. Smoke finding that changed a default: with RoI-objectness negatives at weight 0.1 (and 1.0) the held-out (unlabelled) objects
+  were driven to objectness ~0.01 and no unknown could ever be detected (OE 0). With `roi_head.neg_obj_weight: 0.0` (pure OLN:
+  quality head trained on positives only) the same tiny run recovers unknowns (SYNTHETIC val: U-Rec 0.23, OE 12.1 vs 4.2 at the
+  un-tuned config defaults). Default is therefore 0.0; raise it only if real-data validation shows too many background unknowns.
+- A33. S_known_max calibration = clamp(cos_max / cos_ref, 0, 1); `cos_ref` is tuned by calibrate_unknown.py together with alpha,
+  tau_unk and the cap (candidates: 1.0 and percentiles 10/25/50/75 of the max-cosine of RoIs matching known GT).
+- A34. Known score = sqrt(S_obj * p_class) (softmax over ACTIVE slots), top-2 classes per RoI, class-aware NMS; unknown candidates
+  are class-agnostic NMS'd at `unk_nms_iou`. TTA: 4 views, boxes un-mapped, fused per class (unknown = one label) by the in-house
+  WBF (a view never contributes twice to one cluster; score x min(n,views)/views), then NMS again.
+- A35. Conflict suppression is applied per image on the ROUNDED rows (coords 2 dp, score 6 dp) in final row order using the same
+  pairwise rule as the scorer, so no known/unknown pair >= IoU 0.5 survives and the official scorer's result is identical under
+  either reading of the rule. Unknown cap is applied after conflict suppression. Rows are written sorted by score per image.
+- A36. Calibration needs a checkpoint trained WITHOUT the held-out classes (a separate short "calibration run" with
+  `data.split_file`); the resulting calibration.json is then applied to the final lineage. This transfer is an approximation.
+- A37. The organisers' validator is invoked as `postprocess.validator_cmd` (default `python <validator> <csv>`); exit code != 0 fails.
+  Our built-in checker always runs too.

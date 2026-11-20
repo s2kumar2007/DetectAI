@@ -191,7 +191,8 @@ class RoIHead(nn.Module):
             loss_cls, loss_box, margin_known = zero, zero, zero
 
         # --- unknown mining among negatives: high objectness, no GT overlap, low known similarity
-        obj_w = torch.ones_like(obj_logit)
+        # negatives are only *probably* background (unlabelled objects live there): down-weight them (OLN-style)
+        obj_w = torch.where(is_pos, torch.ones_like(obj_logit), torch.full_like(obj_logit, float(c.get('neg_obj_weight', 1.0))))
         obj_t = torch.where(is_pos, iou_t, torch.zeros_like(iou_t))
         mined = torch.zeros_like(is_pos)
         margin_unknown = zero
