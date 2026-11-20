@@ -4,6 +4,7 @@ out_dir: runs/round2
 data:
   train_dir: round2
 init:
+  require_verified: true
   checkpoint: runs/stage2/checkpoint.pt    # the verified Round 1 checkpoint
 slots:
   start: 40

@@ -94,3 +94,19 @@ configurable where noted. Newest entries are appended per phase.
   `data.split_file`); the resulting calibration.json is then applied to the final lineage. This transfer is an approximation.
 - A37. The organisers' validator is invoked as `postprocess.validator_cmd` (default `python <validator> <csv>`); exit code != 0 fails.
   Our built-in checker always runs too.
+
+## Phase 6 - Stage 2 (continual)
+- A38. Slots for new classes: classes labelled in Set B that have no slot get the next free slots after the previous map, in class-list
+  order (normally 30..39 when Set A has 30 classes); classes already mapped keep their slot and their labels are used as real GT.
+  Stage 3 forces slots 40..49. Held-out (simulated-unknown) classes never receive a slot.
+- A39. Stage 2/3 start from the EMA weights of the previous checkpoint; the same weights initialise the frozen teacher. Old prototypes
+  are frozen by a gradient mask; backbone stem (+ layer1 for Stage 2, + layer2 for Stage 3) is frozen (`freeze.backbone_stages`).
+- A40. Replay: images are chosen so each old class has ~`replay.per_class` labelled instances (rarest first, seeded), only old-class
+  labels kept; validation images (split `val_ids`) are never replayed. `replay.ratio` of every batch comes from the buffer.
+- A41. Pseudo-labels: teacher score sqrt(S_obj*p) >= `pseudo.score_thr`, class-aware NMS, dropped if IoU >= `overlap_iou` with real GT.
+  Logit KD is KL over OLD-class slots only (temperature 2) on the student's sampled RoIs; feature KD is MSE on all FPN levels.
+- A42. Retention report: old-class mAP (VOC, IoU .5) of the previous checkpoint ("before") vs the new EMA model ("after") on the
+  validation images of the old data (Set A val split). New-class AP is only measurable on the few-shot training images (flagged optimistic).
+- A43. SMOKE ablation on SYNTHETIC data (tiny model, 80 Stage-2 its, same checkpoint): old-class mAP 0.93 -> 0.19 with naive
+  fine-tuning (no replay / pseudo-labels / KD / frozen prototypes), -> 0.62 with the full recipe at lr 1e-3 and 0.72 at lr 3e-4.
+  Stage 2/3 learning rates should stay well below the Stage 1 LR (configs use 1e-4 / 8e-5).

@@ -43,7 +43,7 @@ def tiny_stage1(syn_root, calib_split, tmp_path_factory):
 
     out = tmp_path_factory.mktemp("tiny_stage1")
     cfg = load_config([str(REPO_ROOT / "configs/stage1_setA.yaml"), str(REPO_ROOT / "configs/smoke.yaml")],
-                      [f"data.root={syn_root}", f"out_dir={out}", "train.max_iters=150", "train.max_hours=null",
+                      [f"data.root={syn_root}", f"out_dir={out}", "train.max_iters=250", "train.max_hours=null",
                        f"data.split_file={calib_split}", "train.log_every=25", "train.ckpt_every=0"])
     run_stage(cfg)
     return out

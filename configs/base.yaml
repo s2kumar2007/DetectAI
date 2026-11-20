@@ -79,6 +79,7 @@ model:
     maha_momentum: 0.01
 
 init:
+  require_verified: false      # Stage 3: previous checkpoint must carry a matching <ckpt>.verified.json
   checkpoint: null                  # Stage 1 must be null; Stage 2/3 = our previous-stage checkpoint.pt
 slots:
   start: null                       # first slot for new classes (null = next free slot)
@@ -113,6 +114,7 @@ replay:
   sources: []                       # data.* keys, e.g. [set_a]
   per_class: 20
   max_images: 2000
+  ratio: 0.5                        # fraction of every batch drawn from replay images
 
 new_data:
   repeat: 1                         # repeat factor for few-shot images

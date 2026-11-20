@@ -17,7 +17,7 @@ def test_calibration_script_writes_json_and_beats_defaults(tiny_stage1, syn_root
     for k in ("alpha", "tau_unk", "unk_cap", "cos_ref", "val", "heldout_classes", "checkpoint_sha256", "note"):
         assert k in j
     grid = pd.read_csv(tmp_path / "calibration_grid.csv")
-    assert j["val"]["oe"] == grid["oe"].max()
+    assert abs(j["val"]["oe"] - grid["oe"].max()) < 1e-6
     if j["val_with_config_defaults"]:
         assert j["val"]["oe"] >= j["val_with_config_defaults"]["oe"]
     print(f"[SMOKE, synthetic] calibrated: {j['alpha'], j['tau_unk'], j['unk_cap'], round(j['cos_ref'], 3)} val OE={j['val']['oe']:.1f}")

@@ -115,6 +115,8 @@ def train(state: StageState, device: torch.device, max_hours: Optional[float] = 
             if pl.get("init_hash") != fresh:
                 raise RuntimeError("resume checkpoint does not descend from this seed's random init (hard rule 1)")
             seed_everything(int(cfg.seed), deterministic=False)
+        if state.stage != "stage1" and pl.get("prev_sha256") != state.extra_meta.get("prev_sha256"):
+            raise RuntimeError("resume checkpoint was started from a different previous-stage checkpoint")
         model.load_state_dict(pl["model"])
         ema.module.load_state_dict(pl["ema"])
         ema.updates = int(pl["ema_updates"])
