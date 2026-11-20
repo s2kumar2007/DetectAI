@@ -41,3 +41,20 @@ configurable where noted. Newest entries are appended per phase.
 - A17. Validation split: held-out classes are random among classes with >= 3 images (seeded); each is forced into >= 2
   validation images; every other class with >= 2 images appears at least once in validation when budget allows.
   Few-shot Set B has no split (too small) - retention is measured on the Set A validation images.
+
+## Phase 3 - model
+- A18. The RPN is anchor-free (FCOS/OLN style): per-location ltrb + centerness + box-IoU quality; levels are assigned by
+  max(ltrb) ranges (16 x stride per level). Positives = locations inside a GT box at the matching level (+ the nearest
+  finest-level location for tiny GTs). Negatives = a few (neg_per_pos, low weight) locations OUTSIDE every GT dilated by
+  `neg_dilate`; the band in between is ignored, so unlabelled objects are not trained as background.
+- A19. RoI head has no background class. The cosine classifier is trained only on positive RoIs (IoU >= 0.5); background /
+  objectness is carried by the RoI quality head (target = IoU for positives, 0 for far negatives, soft 0.5 for mined unknowns).
+  Known-class detection score = sqrt(S_obj * p_class) (set in phase 5).
+- A20. Unknown mining (Stage 1+): among non-positive RoIs, the top-K by RoI objectness with low max-cosine to active prototypes
+  become soft-unknown targets (objectness target 0.5, never pushed to 0); a margin loss keeps known embeddings >= margin_known
+  to their prototype and mined-unknown embeddings <= margin_unknown to every known prototype. Mining starts after
+  `mining.start_frac` of the schedule (set by the trainer).
+- A21. `assert_stage1_random_init` re-builds a fresh seeded model and requires bit-identical weights, so any loaded/modified
+  weight is caught; it prints the SHA-256 of the initial weights. Stage 2/3 loads are validated by `assert_prev_checkpoint_ok`
+  (created_by tag, expected previous stage, identical architecture signature).
+- A22. Normalisation uses the common mean/std constants (plain numbers); GN groups = largest divisor <= 32 of the channel count.

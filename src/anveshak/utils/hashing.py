@@ -16,10 +16,10 @@ def state_dict_hash(state: Mapping[str, torch.Tensor]) -> str:
         t = state[key]
         if not torch.is_tensor(t):
             continue
-        t = t.detach().cpu().contiguous()
+        t = t.detach().cpu().contiguous().reshape(-1)
         h.update(key.encode())
         h.update(str(t.dtype).encode())
-        h.update(str(tuple(t.shape)).encode())
+        h.update(str(tuple(state[key].shape)).encode())
         h.update(t.view(torch.uint8).numpy().tobytes() if t.numel() else b"")
     return h.hexdigest()
 

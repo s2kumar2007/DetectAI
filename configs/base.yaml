@@ -46,7 +46,7 @@ model:
     ctr_weight: 1.0
     iou_weight: 1.0
     min_box_size: 2.0
-    max_gt: 300
+    gt_chunk: 64
   roi_head:
     roi_size: 7
     fc_dim: 1024
