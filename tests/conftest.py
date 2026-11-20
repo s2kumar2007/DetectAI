@@ -47,3 +47,16 @@ def tiny_stage1(syn_root, calib_split, tmp_path_factory):
                        f"data.split_file={calib_split}", "train.log_every=25", "train.ckpt_every=0"])
     run_stage(cfg)
     return out
+
+
+@pytest.fixture(scope="session")
+def tiny_stage2(syn_root, tiny_stage1, tmp_path_factory):
+    """Stage 2 on SYNTHETIC Set B from the tiny Stage-1 checkpoint (shared by phase 6-7 tests)."""
+    from anveshak.training.run import run_stage
+    from anveshak.utils.config import REPO_ROOT, load_config
+
+    out = tmp_path_factory.mktemp("tiny_stage2")
+    cfg = load_config([str(REPO_ROOT / "configs/stage2_setB.yaml"), str(REPO_ROOT / "configs/smoke.yaml")],
+                      [f"data.root={syn_root}", f"out_dir={out}", f"init.checkpoint={tiny_stage1 / 'checkpoint.pt'}",
+                       "train.max_iters=80", "train.max_hours=null", "train.log_every=10", "train.ckpt_every=0", "train.lr=0.0003"])
+    return out, run_stage(cfg)

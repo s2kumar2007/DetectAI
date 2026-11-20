@@ -23,10 +23,8 @@ def _cfg2(syn_root, s1, out, iters, extra=()):
 
 
 @pytest.fixture(scope="module")
-def stage2(syn_root, tiny_stage1, tmp_path_factory):
-    out = tmp_path_factory.mktemp("stage2")
-    res = run_stage(_cfg2(syn_root, tiny_stage1, out, 80))
-    return out, res
+def stage2(tiny_stage2):
+    return tiny_stage2
 
 
 def test_pseudo_labels_filter_by_score_and_gt_overlap():

@@ -110,3 +110,14 @@ configurable where noted. Newest entries are appended per phase.
 - A43. SMOKE ablation on SYNTHETIC data (tiny model, 80 Stage-2 its, same checkpoint): old-class mAP 0.93 -> 0.19 with naive
   fine-tuning (no replay / pseudo-labels / KD / frozen prototypes), -> 0.62 with the full recipe at lr 1e-3 and 0.72 at lr 3e-4.
   Stage 2/3 learning rates should stay well below the Stage 1 LR (configs use 1e-4 / 8e-5).
+
+## Phase 7 - Round 2, verification, bundle
+- A44. "Verified Round 1 checkpoint" = `scripts/verify_checkpoint.py` returned PASS for that exact file; it writes
+  `<ckpt>.verified.json` (with the checkpoint SHA-256). Stage 3 (`init.require_verified: true`) refuses a checkpoint without a matching
+  passing record, and only accepts a `stage2` checkpoint (Round 1 final lineage = Set A then Set B).
+- A45. verify_checkpoint pairs rows within (image, class) by smallest box distance (greedy), requires equal counts per (image, class),
+  boxes within 1 px (L-inf) and scores within 1e-3; calibration / TTA default to what `<csv>.meta.json` recorded.
+- A46. The bundle contains no data or images; the checkpoint is only referenced by SHA-256 unless `--include_checkpoint`. Bundling
+  requires a passing verification record unless `--allow_unverified`.
+- A47. Round 2 retention is measured on Set A validation images only (Set B has no held-out data); Round 2 reuses Round 1's
+  calibration.json (no on-site calibration on test data).
