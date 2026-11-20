@@ -46,6 +46,7 @@ class OWODDetector(nn.Module):
         self.register_buffer("pixel_mean", torch.tensor(_MEAN).view(1, 3, 1, 1), persistent=False)
         self.register_buffer("pixel_std", torch.tensor(_STD).view(1, 3, 1, 1), persistent=False)
         self.mining_on = False  # toggled by the trainer after ``mining.start_frac`` of the schedule
+        self.channels_last = False  # set by the trainer (BF16 + channels_last on the GPU)
 
     # ------------------------------------------------------------------ slots
     @property
@@ -72,6 +73,8 @@ class OWODDetector(nn.Module):
             x = im.to(dev)
             x = x.float() / 255.0 if x.dtype == torch.uint8 else x.float()
             batch[i, :, : x.shape[1], : x.shape[2]] = (x[None] - self.pixel_mean) / self.pixel_std
+        if self.channels_last:
+            batch = batch.contiguous(memory_format=torch.channels_last)
         return batch, sizes
 
     def extract(self, x: Tensor) -> List[Tensor]:

@@ -58,3 +58,21 @@ configurable where noted. Newest entries are appended per phase.
   weight is caught; it prints the SHA-256 of the initial weights. Stage 2/3 loads are validated by `assert_prev_checkpoint_ok`
   (created_by tag, expected previous stage, identical architecture signature).
 - A22. Normalisation uses the common mean/std constants (plain numbers); GN groups = largest divisor <= 32 of the channel count.
+
+## Phase 4 - Stage 1 training
+- A23. Every image is letterboxed to a square `input.size` canvas (long side resized, zero-padded bottom/right; tiles smaller
+  than `input.size` are up-scaled). Boxes in targets/predictions are in letterbox pixels and mapped back with the stored scale.
+- A24. Augmentation randomness is a pure function of (seed, epoch, sample index). Mosaic is built from letterboxed parts, then
+  flips / rot90 / scale-jitter / colour-jitter act on the result. Boxes < 40 % visible (30 % in mosaic) or < 2 px are dropped:
+  they become *unlabelled* objects, never background labels.
+- A25. Annotation classes missing from the class list are kept (appended after the listed ones, with a warning) rather than dropped.
+- A26. Validation split priority: explicit `data.split_file` > split recorded in the previous checkpoint (Stage 2/3) > automatic
+  `eval.val_frac` image split without hold-out (seeded by `seed`). Held-out classes get NO slot (never learned).
+- A27. `train.max_iters` counts optimizer steps (each = `accum_steps` micro-batches). The cosine LR follows
+  `progress = max(iter/max_iters, elapsed/budget)` so time-budgeted runs finish with a fully decayed LR. Resume restores
+  weights, EMA, optimizer, iteration and elapsed time; data order restarts (seeded by seed + iteration), so resume is not bit-exact.
+- A28. Stage 1 resume verifies that `last.pt` descends from this seed's random init (hash of the initial weights).
+- A29. EMA decay warms up as min(decay, (1+u)/(10+u)); EMA weights are used for validation, imprinting, teachers and inference.
+- A30. Training is seeded but NOT run with deterministic kernels (speed); determinism is enforced at inference (rule 6).
+- A31. Smoke result (SYNTHETIC data only, tiny ResNet-18 GN [1,1,1,1], 600 its on CPU): loss 4.27 -> 1.78 and validation mAP 1.0
+  on the 6 easy synthetic base classes (an untrained model scores 0.0). This says nothing about real-data accuracy.
