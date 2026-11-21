@@ -1,6 +1,7 @@
 """Submission CSV writer + validator integration."""
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import sys
@@ -35,7 +36,7 @@ def validate_submission(csv_path: str | Path, allowed_classes: Sequence[str], im
     if ext and Path(ext).exists():
         cmd = str(postprocess_cfg.validator_cmd).format(python=sys.executable, validator=ext, csv=str(csv_path))
         log.info("running organisers' validator: %s", cmd)
-        proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True)
+        proc = subprocess.run(shlex.split(cmd, posix=(os.name != "nt")), capture_output=True, text=True)
         for line in (proc.stdout + proc.stderr).splitlines():
             log.info("[validate_predictions] %s", line)
         info.update(external_validator=str(ext), external_ok=proc.returncode == 0)

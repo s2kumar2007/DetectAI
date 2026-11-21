@@ -121,3 +121,8 @@ configurable where noted. Newest entries are appended per phase.
   requires a passing verification record unless `--allow_unverified`.
 - A47. Round 2 retention is measured on Set A validation images only (Set B has no held-out data); Round 2 reuses Round 1's
   calibration.json (no on-site calibration on test data).
+
+## Phase 9 - repo audit
+- A48. Commit `f89827f` ("Refresh repository contributor metadata") was verified via `git show f89827f --stat` and `git diff f89827f^ f89827f` to be an empty commit touching 0 files. Since it altered only commit metadata and no code, configs, or files, it is retained as-is per instructions without reverting.
+- A49. Pretrained weight loading audit: full re-grep confirmed zero external or pretrained weight loading paths. All occurrences of `pretrained`, `weights=`, `torch.hub`, and `from_pretrained` are strict assertions (`PretrainedWeightError`), monkeypatches, or tests verifying that external weights are rejected.
+
