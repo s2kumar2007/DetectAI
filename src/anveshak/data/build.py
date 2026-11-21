@@ -27,10 +27,42 @@ def load_class_names(cfg) -> Optional[List[str]]:
     return load_class_list(path)
 
 
+def check_image_sizes(records: Sequence[ImageRecord], configured_size: int, tolerance_ratio: float = 0.5) -> Optional[Tuple[int, int]]:
+    """Auto-detect median image size from records and warn if tiles differ significantly from configured size."""
+    if not records:
+        return None
+    import numpy as np
+    widths = [r.width for r in records if r.width > 0]
+    heights = [r.height for r in records if r.height > 0]
+    if not widths or not heights:
+        return None
+    med_w, med_h = int(np.median(widths)), int(np.median(heights))
+    max_dim = max(med_w, med_h)
+
+    # Check if tiles are much smaller (< 50% of configured size) or much larger (> 200% of configured size)
+    if max_dim < configured_size * (1.0 - tolerance_ratio):
+        log.warning(
+            "Auto-detected median tile size (%dx%d, max %d) is MUCH SMALLER than configured input size (%d). "
+            "Consider setting input.size closer to %d to avoid unnecessary upsampling and wasted computation.",
+            med_w, med_h, max_dim, configured_size, max_dim,
+        )
+    elif max_dim > configured_size * 2.0:
+        log.warning(
+            "Auto-detected median tile size (%dx%d, max %d) is MUCH LARGER than configured input size (%d). "
+            "Downsampling to %d may cause small objects to be lost. Consider setting input.size closer to %d or tiling.",
+            med_w, med_h, max_dim, configured_size, configured_size, max_dim,
+        )
+    else:
+        log.info("Auto-detected median tile size (%dx%d) is compatible with configured input size (%d).", med_w, med_h, configured_size)
+    return med_w, med_h
+
+
 def load_set(cfg, sub: str, class_names: Optional[Sequence[str]]) -> List[ImageRecord]:
     root = resolve(cfg, sub)
     recs = load_annotations(root, cfg.data.format, class_names, cfg.data.image_id_mode)
     log.info("loaded %d images from %s", len(recs), root)
+    if hasattr(cfg, "input") and hasattr(cfg.input, "size") and cfg.input.size:
+        check_image_sizes(recs, int(cfg.input.size))
     return recs
 
 

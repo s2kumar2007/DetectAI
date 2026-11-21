@@ -49,11 +49,38 @@ Round 2 data goes to `round2/` (training) and `test/` (new unlabelled images). P
 `--set data.root=/path/to/anveshak_data`.
 ```bash
 export DATA=/path/to/anveshak_data
-python scripts/inspect_data.py --root $DATA/set_a --class_list $DATA/class_list.txt     # class counts, box sizes, image sizes
-python scripts/inspect_data.py --root $DATA/set_b --class_list $DATA/class_list.txt
-python scripts/inspect_data.py --root $DATA/test
 ```
 If the CSV `image_id` must be the file name with extension, add `data.image_id_mode=filename` to every command.
+
+## Before training on the GPU (Sanity & Readiness Checklist)
+Before launching an 8-hour training run on the RTX A4000 (16 GB), run this sequence to guarantee hardware, memory, data, and unknown objectness health:
+
+```bash
+# 1. Environment & data preflight check (all checks must PASS)
+python scripts/preflight.py --config configs/stage1_setA.yaml --set data.root=$DATA
+
+# 2. Speed and VRAM benchmark (evaluates 512, 800, 1024 px; verifies 16 GB VRAM fit)
+python scripts/benchmark_speed.py
+
+# 3. Inspect dataset & auto-detect tile dimensions (warns if tiles differ from input.size)
+python scripts/inspect_data.py --root $DATA/set_a --class_list $DATA/class_list.txt
+python scripts/inspect_data.py --root $DATA/set_b --class_list $DATA/class_list.txt
+python scripts/inspect_data.py --root $DATA/test
+
+# 4. Create the simulated-unknown validation split (holds out 6 fake unknown classes)
+python scripts/make_val_split.py --root $DATA/set_a --class_list $DATA/class_list.txt \
+    --n_holdout 6 --val_frac 0.15 --seed 1337 --out splits/set_a_split.json
+
+# 5. Short 20-minute diagnostic run to verify unknown objectness before long runs
+python scripts/train_setA.py --config configs/stage1_setA.yaml \
+    --set data.root=$DATA data.split_file=splits/set_a_split.json \
+    --out runs/pre_train_diagnostic --max_hours 0.33
+
+# 6. Diagnose unknown objectness on the short checkpoint
+python scripts/diagnose_unknown.py --checkpoint runs/pre_train_diagnostic/checkpoint.pt \
+    --split splits/set_a_split.json --config configs/stage1_setA.yaml --set data.root=$DATA
+# Verify that unknown objectness is > 0.05 and clearly above background before starting the 8-hour run!
+```
 
 ## 3. Simulated-unknown split (for calibration only)
 ```bash

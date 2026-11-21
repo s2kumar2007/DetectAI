@@ -132,4 +132,10 @@ configurable where noted. Newest entries are appended per phase.
 - A52. Unknown mining: proposals satisfying `obj_p >= obj_min (0.05)`, IoU with known GT < 0.1, and prototype `cos_max <= 0.8` are mined as soft unknown targets with target 0.5 and loss weight 1.0, accompanied by unknown margin loss (`margin_unknown = 0.2`). Warmup iterations can be specified explicitly (`warmup_iters`) or as a schedule fraction (`start_frac: 0.2`).
 - A53. RoI negative weight study evaluated `{1.0, 0.3, 0.1, 0.0}` on synthetic data over 150 iterations. While all OE-scores on 150-iteration synthetic smoke runs are 0.0 (due to RPN recall and uncalibrated evaluation), `roi_neg_weight = 0.1` elevates held-out unknown objectness from `0.0045` (at 1.0) to `0.1842` without degrading known-class mAP (achieving `0.7999` vs `0.6737` at 1.0).
 
+## Phase 11 - GPU readiness, benchmark & agent rules
+- A54. `scripts/preflight.py` checks 7 conditions: CUDA available, Free VRAM >= 12 GB, data layout under data.root (set_a, set_b, test), class list parses, validator path (optional), output directory writable, and config sanity (no pretrained paths set). Accepts `--allow_cpu` for running in non-GPU test/CI environments.
+- A55. `scripts/benchmark_speed.py` benchmarks training throughput (img/s) and peak VRAM across image resolutions (512, 800, 1024), FPN P2 options (True/False), and batch sizes (1, 2, 4, 8) on CUDA. Catches CUDA OOM gracefully. Supports `--cpu --tiny` mode for quick CPU smoke testing. Recommends optimal settings for 16 GB RTX A4000 (800 px, batch 4, accumulation 4, P2=True).
+- A56. Image size auto-detection is added in `src/anveshak/data/build.py:check_image_sizes` and `scripts/inspect_data.py`. Issues explicit warnings if median tile dimension is < 50% or > 200% of the configured `input.size`.
+
+
 

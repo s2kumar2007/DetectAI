@@ -55,6 +55,7 @@ def main() -> None:
     ap.add_argument("--format", default="auto", choices=["auto", "coco", "yolo", "voc", "csv"])
     ap.add_argument("--class_list", default=None)
     ap.add_argument("--image_id_mode", default="stem", choices=["stem", "filename"])
+    ap.add_argument("--configured_size", type=int, default=800, help="Configured input size in configs/base.yaml (default: 800)")
     a = ap.parse_args()
     info = describe(a.root, a.format, a.class_list, a.image_id_mode)
     print(f"root:                 {a.root}")
@@ -62,6 +63,20 @@ def main() -> None:
     print(f"images:               {info['images']}  (without boxes: {info['images_without_boxes']})")
     print(f"boxes:                {info['boxes']}")
     print(f"image sizes (w,h):    {info['image_sizes']}")
+
+    # Auto-detect image size and warn if differs from configured input size
+    if info["image_sizes"]:
+        dims = [max(w, h) for (w, h), cnt in info["image_sizes"].items() for _ in range(cnt)]
+        med_dim = int(np.median(dims))
+        cfg_sz = a.configured_size
+        if med_dim < cfg_sz * 0.5:
+            print(f"[WARNING] Auto-detected median image size (~{med_dim}px) is MUCH SMALLER than configured input size ({cfg_sz}px).")
+            print(f"          Upsampling tiles will waste compute. Consider setting input.size closer to {med_dim}px.")
+        elif med_dim > cfg_sz * 2.0:
+            print(f"[WARNING] Auto-detected median image size (~{med_dim}px) is MUCH LARGER than configured input size ({cfg_sz}px).")
+            print(f"          Downsampling tiles to {cfg_sz}px may lose small objects. Consider setting input.size closer to {med_dim}px or tiling.")
+        else:
+            print(f"[INFO] Image size auto-detection: median tile dimension ({med_dim}px) matches configured input size ({cfg_sz}px).")
     print(f"box width  (px):      {_pct(info['w'])}")
     print(f"box height (px):      {_pct(info['h'])}")
     if info["boxes"]:
