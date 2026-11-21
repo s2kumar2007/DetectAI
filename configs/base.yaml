@@ -61,18 +61,22 @@ model:
     cls_weight: 1.0
     box_weight: 1.0
     obj_weight: 1.0
-    neg_obj_weight: 0.0             # OLN-style: RoI objectness is trained on positives only (unlabelled objects are never pushed to 0)
+    roi_neg_weight: 0.1             # default 0.1, range 0.0-1.0; scales RoI background loss
+    neg_obj_weight: 0.1             # backwards-compatible alias
+    ignore_high_obj_negatives: true # down-weight negatives on regions model scores as high-objectness
+    high_obj_thresh: 0.3            # objectness threshold for ignoring background target
     detections_per_img: 300
   mining:
     enable: true
-    start_frac: 0.2                 # fraction of schedule before mining starts
+    start_frac: 0.1                 # fraction of schedule before mining starts (when warmup_iters is null)
+    warmup_iters: null              # integer warmup iterations before mining starts (overrides start_frac if set)
     topk: 5
-    obj_min: 0.2
+    obj_min: 0.05
     cos_max: 0.8
-    soft_target: 0.5
+    soft_target: 0.6
     margin_known: 0.5
     margin_unknown: 0.2
-    weight: 0.5
+    weight: 1.0
     suppress_iou: 0.3
   ablation:
     prob_mahalanobis: false         # OFF by default (documented ablation hook)

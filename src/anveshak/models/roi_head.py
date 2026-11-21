@@ -191,11 +191,28 @@ class RoIHead(nn.Module):
             loss_cls, loss_box, margin_known = zero, zero, zero
 
         # --- unknown mining among negatives: high objectness, no GT overlap, low known similarity
-        # negatives are only *probably* background (unlabelled objects live there): down-weight them (OLN-style)
-        obj_w = torch.where(is_pos, torch.ones_like(obj_logit), torch.full_like(obj_logit, float(c.get('neg_obj_weight', 1.0))))
+        # negatives are only *probably* background (unlabelled objects live there): down-weight them
+        neg_w = float(c.get("roi_neg_weight", c.get("neg_obj_weight", 0.1)))
+        neg_w = max(0.0, min(1.0, neg_w))
+        obj_w = torch.where(is_pos, torch.ones_like(obj_logit), torch.full_like(obj_logit, neg_w))
         obj_t = torch.where(is_pos, iou_t, torch.zeros_like(iou_t))
         mined = torch.zeros_like(is_pos)
         margin_unknown = zero
+
+        # Negative sampling hygiene: down-weight negatives on regions the model itself scores as high-objectness but match no GT
+        if bool(c.get("ignore_high_obj_negatives", True)):
+            with torch.no_grad():
+                obj_p = torch.sigmoid(obj_logit)
+                thr = float(c.get("high_obj_thresh", 0.3))
+                if not mining_on:
+                    thr = max(thr, 0.6)
+                if bool(active.any()):
+                    max_cos = cos[:, active].max(1).values
+                    high_obj = (~is_pos) & (obj_p >= thr) & (max_cos <= float(m.get("cos_max", 0.8)))
+                else:
+                    high_obj = (~is_pos) & (obj_p >= thr)
+                obj_w = torch.where(high_obj, torch.zeros_like(obj_w), obj_w)
+
         if bool(m.enable) and mining_on and bool(active.any()):
             with torch.no_grad():
                 obj_p = torch.sigmoid(obj_logit)
@@ -215,6 +232,7 @@ class RoIHead(nn.Module):
                                 near = box_iou(rois[ni], rois[mi]).max(1).values >= float(m.suppress_iou)
                                 obj_w[ni[near]] = 0.0
                     obj_t = torch.where(mined, torch.full_like(obj_t, float(m.soft_target)), obj_t)
+                    obj_w = torch.where(mined, torch.full_like(obj_w, float(m.get("weight", 1.0))), obj_w)
             if mined.any():
                 margin_unknown = F.relu(cos[mined][:, active].max(1).values - float(m.margin_unknown)).mean()
         loss_obj = F.binary_cross_entropy_with_logits(obj_logit, obj_t, weight=obj_w, reduction="sum") / obj_w.sum().clamp(min=1.0)
@@ -227,6 +245,7 @@ class RoIHead(nn.Module):
         }
         aux = {
             "rois": rois_l, "logits": logits, "labels": labels, "is_pos": is_pos, "mined": mined,
+            "obj_t": obj_t, "obj_w": obj_w, "obj_logit": obj_logit,
             "n_pos": int(is_pos.sum()), "n_mined": int(mined.sum()),
         }
         return losses, aux

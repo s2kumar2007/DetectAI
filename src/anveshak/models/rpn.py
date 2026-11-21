@@ -127,6 +127,11 @@ class OLNRPN(nn.Module):
                 neg = torch.ones_like(pos)
             pidx = pos.nonzero().flatten()
             nidx = neg.nonzero().flatten()
+            if bool(c.get("ignore_high_obj_negatives", True)) and nidx.numel():
+                rpn_sc = (torch.sigmoid(ctr[i, nidx]) * torch.sigmoid(iou[i, nidx])).sqrt()
+                low_mask = rpn_sc <= float(c.get("rpn_high_score_thresh", 0.5))
+                if low_mask.sum() >= int(c.get("neg_min", 32)):
+                    nidx = nidx[low_mask]
             n_neg = min(nidx.numel(), max(int(c.neg_min), int(math.ceil(float(c.neg_per_pos) * pidx.numel()))))
             if n_neg < nidx.numel():
                 nidx = nidx[torch.randperm(nidx.numel(), device=dev)[:n_neg]]

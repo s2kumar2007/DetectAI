@@ -157,7 +157,11 @@ def train(state: StageState, device: torch.device, max_hours: Optional[float] = 
         f = lr_factor(it, int(t.warmup_iters), progress, float(t.min_lr_frac))
         for g in opt.param_groups:
             g["lr"] = g["base_lr"] * f
-        model.mining_on = progress >= float(cfg.model.mining.start_frac)
+        mining_warmup = cfg.model.mining.get("warmup_iters", None)
+        if mining_warmup is not None:
+            model.mining_on = it >= int(mining_warmup)
+        else:
+            model.mining_on = progress >= float(cfg.model.mining.start_frac)
         opt.zero_grad(set_to_none=True)
         step_losses: Dict[str, float] = {}
         ok = True

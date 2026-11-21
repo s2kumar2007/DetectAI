@@ -2,6 +2,11 @@
 import sys
 from pathlib import Path
 
+import torch
+
+if torch.get_num_threads() > 2:
+    torch.set_num_threads(2)
+
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]

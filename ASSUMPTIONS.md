@@ -126,3 +126,10 @@ configurable where noted. Newest entries are appended per phase.
 - A48. Commit `f89827f` ("Refresh repository contributor metadata") was verified via `git show f89827f --stat` and `git diff f89827f^ f89827f` to be an empty commit touching 0 files. Since it altered only commit metadata and no code, configs, or files, it is retained as-is per instructions without reverting.
 - A49. Pretrained weight loading audit: full re-grep confirmed zero external or pretrained weight loading paths. All occurrences of `pretrained`, `weights=`, `torch.hub`, and `from_pretrained` are strict assertions (`PretrainedWeightError`), monkeypatches, or tests verifying that external weights are rejected.
 
+## Phase 10 - unknown objectness fix & study
+- A50. `roi_neg_weight` default is set to 0.1 (clamped to [0.0, 1.0]), scaling the RoI quality head background loss. Backwards-compatible with legacy `neg_obj_weight`.
+- A51. Negative sampling hygiene: proposals with high model objectness (`>= high_obj_thresh = 0.3`) matching no GT and having low cosine similarity to active prototypes (`cos <= cos_max = 0.8`) are down-weighted (`obj_w = 0.0`) as negatives to prevent penalizing unlabelled unknown objects. RPN anchor-free negatives also ignore high-scoring locations (`ignore_high_obj_negatives: true`).
+- A52. Unknown mining: proposals satisfying `obj_p >= obj_min (0.05)`, IoU with known GT < 0.1, and prototype `cos_max <= 0.8` are mined as soft unknown targets with target 0.5 and loss weight 1.0, accompanied by unknown margin loss (`margin_unknown = 0.2`). Warmup iterations can be specified explicitly (`warmup_iters`) or as a schedule fraction (`start_frac: 0.2`).
+- A53. RoI negative weight study evaluated `{1.0, 0.3, 0.1, 0.0}` on synthetic data over 150 iterations. While all OE-scores on 150-iteration synthetic smoke runs are 0.0 (due to RPN recall and uncalibrated evaluation), `roi_neg_weight = 0.1` elevates held-out unknown objectness from `0.0045` (at 1.0) to `0.1842` without degrading known-class mAP (achieving `0.7999` vs `0.6737` at 1.0).
+
+
