@@ -1,0 +1,13 @@
+# git log --oneline --decorate, generated before the final commit that adds this file (that commit carries tags phase-8 and v1.0)
+30faa98 (HEAD -> main, tag: phase-8) phase-8: docs, README with exact commands, methodology PPT, smoke pipeline script
+76d7732 (tag: phase-7) phase-7: Stage 3 (Round 2) script, on-site playbook, verify_checkpoint, build_submission_bundle
+5066145 (tag: phase-6) phase-6: Stage 2 (Set B) - imprinting, teacher pseudo-labels, replay, KD, frozen early stages, retention report
+7914475 (tag: phase-5) phase-5: unknown gate, calibration, conflict-aware postprocess, TTA + WBF, CSV export, validator integration
+5503954 (tag: phase-4) phase-4: Stage 1 training loop (Set A) with augmentation, unknown mining, EMA, BF16, resume, time budget
+425018a (tag: phase-3) phase-3: model (GN ResNet, FPN P2-P6, OLN RPN, cosine RoI head, assertions, imprint)
+3233e4f (tag: phase-2) phase-2: local scorer, conflict rule, CSV checker, simulated-unknown split
+fa15dd2 (tag: phase-1) phase-1: data layer, class list, synthetic generator, inspect_data
+3e58203 (tag: phase-0) phase-0: repo skeleton, configs, gitignore, requirements
+
+# git status --short (clean = empty, before adding this file)
+?? docs/GIT_HISTORY.txt
