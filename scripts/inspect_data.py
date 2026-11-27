@@ -27,18 +27,24 @@ def describe(root: str, fmt: str = "auto", class_list_path: str | None = None, i
     w = boxes[:, 2] - boxes[:, 0] if len(boxes) else np.zeros(0)
     h = boxes[:, 3] - boxes[:, 1] if len(boxes) else np.zeros(0)
     sizes = Counter((r.width, r.height) for r in recs)
+    bpt = np.asarray([len(r.boxes) for r in recs], dtype=np.float32) if recs else np.zeros(0, dtype=np.float32)
     info = {
         "format": fmt_used,
         "images": len(recs),
         "images_without_boxes": sum(1 for r in recs if len(r.boxes) == 0),
         "boxes": int(len(boxes)),
+        "boxes_per_tile": {
+            "min": int(bpt.min()) if len(bpt) else 0,
+            "mean": float(bpt.mean()) if len(bpt) else 0.0,
+            "max": int(bpt.max()) if len(bpt) else 0,
+        },
         "class_counts": dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))),
         "image_sizes": dict(sizes.most_common(10)),
         "w": w, "h": h,
     }
     if class_list:
         info["classes_in_list_not_in_data"] = [c for c in class_list if c not in counts]
-        info["classes_in_data_not_in_list"] = sorted(c for c in counts if c not in class_list)
+        info["classes_in_data_not_in_list"] = sorted(c for c in counts if c not in class_list and c.lower() != "unknown")
     return info
 
 
@@ -52,7 +58,7 @@ def _pct(a: np.ndarray) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
-    ap.add_argument("--format", default="auto", choices=["auto", "coco", "yolo", "voc", "csv"])
+    ap.add_argument("--format", default="auto", choices=["auto", "tilejson", "coco", "yolo", "voc", "csv"])
     ap.add_argument("--class_list", default=None)
     ap.add_argument("--image_id_mode", default="stem", choices=["stem", "filename"])
     ap.add_argument("--configured_size", type=int, default=800, help="Configured input size in configs/base.yaml (default: 800)")
@@ -60,8 +66,10 @@ def main() -> None:
     info = describe(a.root, a.format, a.class_list, a.image_id_mode)
     print(f"root:                 {a.root}")
     print(f"format:               {info['format']}")
-    print(f"images:               {info['images']}  (without boxes: {info['images_without_boxes']})")
+    print(f"images:               {info['images']}  (empty tiles: {info['images_without_boxes']})")
     print(f"boxes:                {info['boxes']}")
+    bpt = info["boxes_per_tile"]
+    print(f"boxes per tile:       min {bpt['min']} | mean {bpt['mean']:.2f} | max {bpt['max']}")
     print(f"image sizes (w,h):    {info['image_sizes']}")
 
     # Auto-detect image size and warn if differs from configured input size

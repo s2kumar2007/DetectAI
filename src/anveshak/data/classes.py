@@ -10,7 +10,7 @@ from typing import Dict, List
 import yaml
 
 _NAME_KEYS = ("class_code", "class_name", "classname", "code", "class", "name", "label", "category")
-_HEADER_WORDS = {"class", "class_code", "class_name", "classname", "code", "name", "label", "category", "id", "index"}
+_HEADER_WORDS = {"class", "class_code", "class_name", "classname", "code", "name", "label", "category", "id", "index", "class_id"}
 
 
 def _from_json(obj) -> List[str]:
@@ -57,9 +57,10 @@ def _from_csv(text: str) -> List[str]:
             if k in header:
                 col = header.index(k)
                 break
-        for k in ("id", "index"):
+        for k in ("class_id", "id", "index"):
             if k in header:
                 id_col = header.index(k)
+                break
         rows = rows[1:]
     if id_col is not None and id_col != col:
         try:
@@ -102,13 +103,37 @@ def load_class_list(path: str | Path) -> List[str]:
             else:
                 names = lines
     names = [str(n).strip().strip('"').strip("'") for n in names]
-    names = [n for n in names if n]
+    names = [n for n in names if n and n.lower() != "unknown"]
     if not names:
         raise ValueError(f"class list {p} is empty")
     dups = sorted({n for n in names if names.count(n) > 1})
     if dups:
         raise ValueError(f"duplicate class codes in {p}: {dups}")
     return names
+
+
+def load_class_id_map(path: str | Path) -> Dict[str, int]:
+    """Return mapping {label: class_id} from a CSV/JSON/list class file (excluding 'unknown' as trainable, though 'unknown' may appear in CSV)."""
+    p = Path(path)
+    if p.suffix.lower() == ".csv" and p.exists():
+        text = p.read_text(encoding="utf-8-sig")
+        rows = [r for r in csv.reader(io.StringIO(text)) if r and any(c.strip() for c in r)]
+        if rows:
+            header = [c.strip().lower() for c in rows[0]]
+            if any(h in _HEADER_WORDS for h in header):
+                col = next((header.index(k) for k in _NAME_KEYS if k in header), 0)
+                id_col = next((header.index(k) for k in ("class_id", "id", "index") if k in header), None)
+                if id_col is not None and id_col != col:
+                    out: Dict[str, int] = {}
+                    for r in rows[1:]:
+                        if len(r) > max(col, id_col) and r[col].strip():
+                            try:
+                                out[r[col].strip()] = int(r[id_col].strip())
+                            except ValueError:
+                                pass
+                    if out:
+                        return out
+    return {n: i for i, n in enumerate(load_class_list(p))}
 
 
 def class_index(names: List[str]) -> Dict[str, int]:

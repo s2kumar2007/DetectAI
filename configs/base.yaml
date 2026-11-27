@@ -10,7 +10,7 @@ data:
   round2: round2
   test: test
   class_list: class_list.txt        # relative to data.root (or absolute)
-  format: auto                      # auto | coco | yolo | voc | csv
+  format: auto                      # auto | tilejson | coco | yolo | voc | csv
   image_id_mode: stem               # stem | filename  (value written in CSV image_id)
   train_dir: set_a                  # which sub-dir this stage trains on
   split_file: null                  # JSON from scripts/make_val_split.py

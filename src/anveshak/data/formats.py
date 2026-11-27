@@ -1,4 +1,4 @@
-"""Annotation format auto-detection and parsers: COCO JSON, YOLO txt, Pascal VOC XML, CSV.
+"""Annotation format auto-detection and parsers: Tile-JSON, COCO JSON, YOLO txt, Pascal VOC XML, CSV.
 
 Everything is converted to :class:`ImageRecord` (xyxy pixel coordinates, string class codes).
 Detection is by *inspecting files* under a directory; ``fmt`` can force a format.
@@ -6,7 +6,9 @@ Detection is by *inspecting files* under a directory; ``fmt`` can force a format
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import pickle
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
@@ -19,7 +21,7 @@ from ..utils.log import get_logger
 
 log = get_logger("anveshak.data")
 
-FORMATS = ("coco", "yolo", "voc", "csv")
+FORMATS = ("tilejson", "coco", "yolo", "voc", "csv")
 _CSV_ALIASES = {
     "image": ("image_id", "filename", "file_name", "image", "image_name", "img", "file", "path", "image_path"),
     "cls": ("class_name", "class", "label", "category", "class_code", "category_name", "name"),
@@ -79,6 +81,19 @@ def _map_class(name: object, class_list: Optional[Sequence[str]]) -> str:
         if 0 <= i < len(class_list):
             return class_list[i]
     return s
+
+
+def _sniff_tilejson(path: Path) -> Optional[dict]:
+    try:
+        if path.stat().st_size > 50_000_000:
+            return None
+        with open(path, "r", encoding="utf-8") as fh:
+            obj = json.load(fh)
+    except Exception:
+        return None
+    if isinstance(obj, dict) and "tile_id" in obj and "annotations" in obj:
+        return obj
+    return None
 
 
 def _sniff_json(path: Path) -> Optional[dict]:
@@ -154,11 +169,18 @@ def _yolo_label_files(root: Path) -> List[Path]:
 
 
 def detect_format(root: str | Path) -> str:
-    """Inspect files under ``root`` and return one of coco | voc | csv | yolo. Raises if none match."""
+    """Inspect files under ``root`` and return one of tilejson | coco | voc | csv | yolo. Raises if none match."""
     root = Path(root)
     if not root.exists():
         raise FileNotFoundError(root)
+    labels_dir = root / "labels"
+    if labels_dir.is_dir():
+        for p in sorted(labels_dir.glob("*.json")):
+            if _sniff_tilejson(p) is not None:
+                return "tilejson"
     for p in sorted(root.rglob("*.json")):
+        if _sniff_tilejson(p) is not None:
+            return "tilejson"
         if _sniff_json(p) is not None:
             return "coco"
     for p in sorted(root.rglob("*.xml")):
@@ -169,7 +191,7 @@ def detect_format(root: str | Path) -> str:
             return "csv"
     if _yolo_label_files(root):
         return "yolo"
-    raise ValueError(f"could not detect an annotation format under {root} (looked for COCO/VOC/CSV/YOLO)")
+    raise ValueError(f"could not detect an annotation format under {root} (looked for Tile-JSON/COCO/VOC/CSV/YOLO)")
 
 
 # ----------------------------------------------------------------------------- parsers
@@ -345,7 +367,170 @@ def load_csv(root: Path, class_list: Optional[Sequence[str]], image_id_mode: str
     return recs
 
 
-_LOADERS = {"coco": load_coco, "yolo": load_yolo, "voc": load_voc, "csv": load_csv}
+def _read_tiles_csv(root: Path) -> Dict[str, tuple[int, int]]:
+    tc = root / "tiles.csv"
+    if not tc.is_file():
+        return {}
+    out: Dict[str, tuple[int, int]] = {}
+    try:
+        with open(tc, "r", encoding="utf-8-sig", newline="") as fh:
+            for row in csv.DictReader(fh):
+                tid = (row.get("tile_id") or "").strip()
+                if tid:
+                    try:
+                        out[tid] = (int(float(row.get("width", 0) or 0)), int(float(row.get("height", 0) or 0)))
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+    return out
+
+
+def _tilejson_cache_path(root: Path) -> Path:
+    cand = root / ".tilejson_cache.pkl"
+    try:
+        if cand.exists() or os_writable(root):
+            return cand
+    except Exception:
+        pass
+    h = hashlib.sha256(str(root.resolve()).encode("utf-8")).hexdigest()[:16]
+    p = Path("runs") / "cache" / f"tilejson_{h}.pkl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def os_writable(d: Path) -> bool:
+    import os
+    return os.access(str(d), os.W_OK)
+
+
+def load_tilejson(
+    root: Path,
+    class_list: Optional[Sequence[str]],
+    image_id_mode: str,
+    class_id_map: Optional[Dict[str, int]] = None,
+) -> List[ImageRecord]:
+    """Load per-tile JSON annotations (<root>/labels/<tile_id>.json) matched by stem to <root>/images/<tile_id>.*."""
+    img_root = root / "images" if (root / "images").is_dir() else root
+    img_paths = list_images(img_root)
+    tiles_meta = _read_tiles_csv(root)
+
+    labels_dir = root / "labels"
+    json_files = sorted(labels_dir.glob("*.json")) if labels_dir.is_dir() else sorted(root.rglob("*.json"))
+
+    cache_path = _tilejson_cache_path(root)
+    entries: Dict[str, tuple] = {}
+    if cache_path.is_file():
+        try:
+            with open(cache_path, "rb") as fh:
+                blob = pickle.load(fh)
+            if isinstance(blob, dict) and blob.get("version") == 1:
+                entries = blob.get("entries", {})
+        except Exception:
+            entries = {}
+
+    dirty = False
+    by_tile_id: Dict[str, tuple] = {}
+    for jp in json_files:
+        st = jp.stat()
+        sig = (st.st_mtime_ns, st.st_size)
+        key = str(jp.relative_to(root))
+        cached = entries.get(key)
+        if cached is not None and cached[:2] == sig:
+            _, _, tile_id, w, h, boxes_raw, raw_labels, json_cids = cached
+        else:
+            obj = _sniff_tilejson(jp)
+            if obj is None:
+                continue
+            tile_id = str(obj.get("tile_id") or jp.stem)
+            w = int(obj.get("width") or 0)
+            h = int(obj.get("height") or 0)
+            bbox_fmt = str(obj.get("bbox_format") or "xyxy").lower()
+            if bbox_fmt not in ("xyxy", "xywh"):
+                raise ValueError(f"unsupported bbox_format {bbox_fmt!r} in {jp}")
+            b_list, l_list, cid_list = [], [], []
+            for ann in obj.get("annotations", []):
+                bb = ann.get("bbox")
+                if not bb or len(bb) < 4:
+                    continue
+                x1, y1, v3, v4 = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
+                if bbox_fmt == "xywh":
+                    x2, y2 = x1 + v3, y1 + v4
+                else:
+                    x2, y2 = v3, v4
+                lab = str(ann.get("label", "unknown")).strip()
+                cid = ann.get("class_id")
+                cid_int = int(cid) if cid is not None else None
+                b_list.append([x1, y1, x2, y2])
+                l_list.append(lab)
+                cid_list.append(cid_int)
+            boxes_raw = np.asarray(b_list, dtype=np.float32).reshape(-1, 4) if b_list else np.zeros((0, 4), dtype=np.float32)
+            raw_labels = l_list
+            json_cids = cid_list
+            entries[key] = (st.st_mtime_ns, st.st_size, tile_id, w, h, boxes_raw, raw_labels, json_cids)
+            dirty = True
+        by_tile_id[tile_id] = (w, h, boxes_raw, raw_labels, json_cids)
+
+    if dirty:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "wb") as fh:
+                pickle.dump({"version": 1, "entries": entries}, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as exc:
+            log.warning("could not write tilejson cache %s: %s", cache_path, exc)
+
+    expected_id_map = dict(class_id_map) if class_id_map is not None else ({c: i for i, c in enumerate(class_list)} if class_list else {})
+    class_set = set(class_list) if class_list is not None else None
+    missing_labels: set[str] = set()
+    id_mismatches: List[str] = []
+
+    recs: List[ImageRecord] = []
+    for img in img_paths:
+        stem = img.stem
+        entry = by_tile_id.get(stem)
+        if entry is not None:
+            w, h, boxes_raw, raw_labels, json_cids = entry
+        else:
+            w, h = tiles_meta.get(stem, (0, 0))
+            boxes_raw = np.zeros((0, 4), dtype=np.float32)
+            raw_labels, json_cids = [], []
+        if w <= 0 or h <= 0:
+            w, h = tiles_meta.get(stem, (0, 0))
+        if w <= 0 or h <= 0:
+            w, h = image_size(img)
+
+        if len(boxes_raw):
+            b = boxes_raw.copy()
+            b[:, [0, 2]] = np.clip(b[:, [0, 2]], 0.0, float(w))
+            b[:, [1, 3]] = np.clip(b[:, [1, 3]], 0.0, float(h))
+            keep_mask = ((b[:, 2] - b[:, 0]) >= 1.0) & ((b[:, 3] - b[:, 1]) >= 1.0)
+            b = b[keep_mask]
+            labs: List[str] = []
+            for keep, lab, cid in zip(keep_mask, raw_labels, json_cids):
+                if not keep:
+                    continue
+                if lab.lower() == "unknown":
+                    labs.append("unknown")
+                    continue
+                if class_set is not None and lab not in class_set:
+                    missing_labels.add(lab)
+                if cid is not None and lab in expected_id_map and cid != expected_id_map[lab]:
+                    if len(id_mismatches) < 10:
+                        id_mismatches.append(f"{stem}:{lab}(json={cid},csv={expected_id_map[lab]})")
+                labs.append(lab)
+        else:
+            b = np.zeros((0, 4), dtype=np.float32)
+            labs = []
+        recs.append(ImageRecord(make_image_id(img, image_id_mode), str(img), int(w), int(h), b, labs))
+
+    if missing_labels:
+        log.warning("tilejson labels missing from class_list (%d): %s", len(missing_labels), sorted(missing_labels)[:20])
+    if id_mismatches:
+        log.warning("tilejson class_id mismatch vs class_list: %s", id_mismatches)
+    return recs
+
+
+_LOADERS = {"tilejson": load_tilejson, "coco": load_coco, "yolo": load_yolo, "voc": load_voc, "csv": load_csv}
 
 
 def load_annotations(
@@ -353,6 +538,7 @@ def load_annotations(
     fmt: str = "auto",
     class_list: Optional[Sequence[str]] = None,
     image_id_mode: str = "stem",
+    class_id_map: Optional[Dict[str, int]] = None,
 ) -> List[ImageRecord]:
     """Load every annotated image under ``root`` as a list of ImageRecord sorted by image_id."""
     root = Path(root)
@@ -361,7 +547,10 @@ def load_annotations(
         log.info("detected annotation format %s under %s", fmt, root)
     if fmt not in _LOADERS:
         raise ValueError(f"unknown format {fmt!r}; expected one of {FORMATS}")
-    recs = _LOADERS[fmt](root, class_list, image_id_mode)
+    if fmt == "tilejson":
+        recs = load_tilejson(root, class_list, image_id_mode, class_id_map=class_id_map)
+    else:
+        recs = _LOADERS[fmt](root, class_list, image_id_mode)
     ids = [r.image_id for r in recs]
     if len(set(ids)) != len(ids):
         dup = sorted({i for i in ids if ids.count(i) > 1})[:5]

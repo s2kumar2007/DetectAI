@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..utils.log import get_logger
-from .classes import load_class_list
+from .classes import load_class_id_map, load_class_list
 from .formats import load_annotations, load_image_dir
 from .records import ImageRecord
 from .slots import SlotMap
@@ -59,7 +59,9 @@ def check_image_sizes(records: Sequence[ImageRecord], configured_size: int, tole
 
 def load_set(cfg, sub: str, class_names: Optional[Sequence[str]]) -> List[ImageRecord]:
     root = resolve(cfg, sub)
-    recs = load_annotations(root, cfg.data.format, class_names, cfg.data.image_id_mode)
+    cl_path = resolve(cfg, cfg.data.class_list)
+    cid_map = load_class_id_map(cl_path) if cl_path.exists() else None
+    recs = load_annotations(root, cfg.data.format, class_names, cfg.data.image_id_mode, class_id_map=cid_map)
     log.info("loaded %d images from %s", len(recs), root)
     if hasattr(cfg, "input") and hasattr(cfg.input, "size") and cfg.input.size:
         check_image_sizes(recs, int(cfg.input.size))

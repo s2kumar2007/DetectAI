@@ -137,5 +137,9 @@ configurable where noted. Newest entries are appended per phase.
 - A55. `scripts/benchmark_speed.py` benchmarks training throughput (img/s) and peak VRAM across image resolutions (512, 800, 1024), FPN P2 options (True/False), and batch sizes (1, 2, 4, 8) on CUDA. Catches CUDA OOM gracefully. Supports `--cpu --tiny` mode for quick CPU smoke testing. Recommends optimal settings for 16 GB RTX A4000 (800 px, batch 4, accumulation 4, P2=True).
 - A56. Image size auto-detection is added in `src/anveshak/data/build.py:check_image_sizes` and `scripts/inspect_data.py`. Issues explicit warnings if median tile dimension is < 50% or > 200% of the configured `input.size`.
 
+## Phase 12 - tile-JSON loader & TIFF handling
+- A57. `load_tilejson` in `src/anveshak/data/formats.py` detects `<root>/labels/*.json` containing `tile_id` and `annotations`. Supports `xyxy` and `xywh`, clips to `[0, 0, w, h]`, drops boxes `< 1 px` in width or height, preserves `"unknown"` (never a trainable class in `load_class_list`), checks `class_id` against `class_list.csv`, and caches parsed JSONs in `<root>/.tilejson_cache.pkl` (fallback `runs/cache/`) keyed by `(mtime_ns, size)`.
+- A58. 16-bit / float / multi-band TIFF image reading (`src/anveshak/data/records.py:load_image`): non-`uint8` images use a per-channel 2nd–98th percentile stretch to `[0, 255]` `uint8` (with min-max fallback if `p98 - p2 < 1e-6`). Multi-band TIFFs (`>= 4` bands or multi-frame `>= 3` frames) take the first 3 bands as RGB. Palette (`P`) and 1-bit (`1`) convert via PIL `RGB`.
+
 
 
