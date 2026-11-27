@@ -26,3 +26,4 @@ new_data:
 distill: {enable: true, feat_weight: 1.0, logit_weight: 1.0, temperature: 2.0}
 pseudo: {enable: true, score_thr: 0.7}
 imprint: {enable: true}
+eval: {retention: true, enforce_retention: true, max_base_map_drop: 0.15}

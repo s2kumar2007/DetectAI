@@ -39,14 +39,20 @@ make smoke           # whole pipeline on synthetic data (see "Smoke run" below)
 Expected layout under one root (names configurable in `configs/base.yaml: data.*`):
 ```
 /path/to/anveshak_data/
-  set_a/   (images + annotations: COCO json | YOLO txt | Pascal VOC xml | CSV - auto-detected)
-  set_b/
-  test/    (unlabelled Round 1 images)
-  class_list.txt   (one class code per line, or a JSON/CSV list)
+  dataset_A/  -> symlink as set_a/   (images/<tile_id>.tif, labels/<tile_id>.json, tiles.csv)
+  dataset_B/  -> symlink as set_b/   (images/<tile_id>.tif, labels/<tile_id>.json, tiles.csv)
+  test/       (images/<tile_id>.tif, tiles.csv; unlabelled Round 1 images)
+  class_list.csv   (header: class_id,label; 41 rows: ids 0-39 + unknown)
   validate_predictions.py   (organisers' validator, optional)
 ```
+Create symlinks if needed and pass `data.class_list=class_list.csv`:
+```bash
+ln -s dataset_A /path/to/anveshak_data/set_a
+ln -s dataset_B /path/to/anveshak_data/set_b
+```
 Round 2 data goes to `round2/` (training) and `test/` (new unlabelled images). Pass the root once per command:
-`--set data.root=/path/to/anveshak_data`.
+`--set data.root=/path/to/anveshak_data data.class_list=class_list.csv`.
+Or run the full real-data sequence via `DATA=/path/to/anveshak_data OUT=runs/real bash scripts/run_real.sh`.
 ```bash
 export DATA=/path/to/anveshak_data
 ```

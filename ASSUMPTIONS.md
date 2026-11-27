@@ -141,5 +141,12 @@ configurable where noted. Newest entries are appended per phase.
 - A57. `load_tilejson` in `src/anveshak/data/formats.py` detects `<root>/labels/*.json` containing `tile_id` and `annotations`. Supports `xyxy` and `xywh`, clips to `[0, 0, w, h]`, drops boxes `< 1 px` in width or height, preserves `"unknown"` (never a trainable class in `load_class_list`), checks `class_id` against `class_list.csv`, and caches parsed JSONs in `<root>/.tilejson_cache.pkl` (fallback `runs/cache/`) keyed by `(mtime_ns, size)`.
 - A58. 16-bit / float / multi-band TIFF image reading (`src/anveshak/data/records.py:load_image`): non-`uint8` images use a per-channel 2nd–98th percentile stretch to `[0, 255]` `uint8` (with min-max fallback if `p98 - p2 < 1e-6`). Multi-band TIFFs (`>= 4` bands or multi-frame `>= 3` frames) take the first 3 bands as RGB. Palette (`P`) and 1-bit (`1`) convert via PIL `RGB`.
 
+## Phase 13 - real-data training fixes
+- A59. Stage 1 class-balanced sampling (`src/anveshak/training/sampling.py`): tile-level Repeat Factor Sampling (`t=0.01`) with empty tiles weighted at `0.25`, paired with capped inverse-sqrt per-slot cross-entropy loss weights (`cap=5.0`, `power=0.5`) to counter the 1,600:1 Set A imbalance (`id 29`: 432,749 boxes vs `ids 0..19`: 265–2,110).
+- A60. Native-resolution training (`configs/base.yaml`, `src/anveshak/data/dataset.py`): `input.mode: crop`, `input.crop_size: 640`, `aug.scale_jitter: [0.8, 1.25]`, `aug.min_vis: 0.6`, crops biased toward rare-class boxes, and full-tile inference at `input.size: 1024`. Avoids downscaling 8–30 px objects below native pixel scale.
+- A61. High-density tile limits: `rpn.pre_nms_top_n: 2000`, `rpn.post_nms_top_n_train: 500`, `rpn.post_nms_top_n_test: 1000`, `roi_head.batch_size_per_image: 256`, `roi_head.detections_per_img: 500`, `infer.topk_known: 500`, `infer.max_rows_per_image: 1000`.
+- A62. `make_val_split` excludes the top-2 most frequent classes and prefers 1,000–5,000 box classes (`--holdout_classes 11 14 17 21 23 24` for the first real run), with graceful fallback for tiny synthetic datasets.
+- A63. Stage 2 precomputes frozen Stage 1 teacher base-class pseudo-labels once across all Set B tiles (including empty tiles) before training, imprints only on real few-shot boxes, and enforces `eval.max_base_map_drop: 0.15` when `eval.enforce_retention: true`. Periodic wall-clock checkpointing (`ckpt_every_minutes: 30.0`) ensures clean `--max_hours` resume.
+
 
 

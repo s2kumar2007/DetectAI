@@ -140,11 +140,18 @@ def train(state: StageState, device: torch.device, max_hours: Optional[float] = 
                                 state.sample_weights)
     accum = max(1, int(t.accum_steps))
     log_every = max(1, int(t.log_every))
+    ckpt_mins = float(t.get("ckpt_every_minutes", 30.0) or 0.0)
+    last_ckpt_wall = time.time()
     metrics_path = out / "metrics.jsonl"
     t0 = time.time() - elapsed0
     it, bad, stopped_by = start_it, 0, "max_iters"
     window: Dict[str, float] = {}
     wcount = 0
+    epoch_cls_counts: Dict[int, int] = {}
+    epoch_samples = 0
+    epoch_idx = 0
+    ds_len = max(1, len(state.train_dataset))
+    s2n = state.slotmap.slot_to_name()
     model.train()
     log.info("training %s: iters=%d budget=%s amp=%s device=%s train_images=%d active_slots=%d", state.stage, max_iters,
              f"{budget_s/3600:.2f}h" if budget_s else "none", amp, device, len(state.train_dataset), len(model.active_slots))
@@ -167,6 +174,10 @@ def train(state: StageState, device: torch.device, max_hours: Optional[float] = 
         ok = True
         for _ in range(accum):
             images, targets = next(batches)
+            epoch_samples += len(images)
+            for tgt in targets:
+                for lb in tgt["labels"].tolist():
+                    epoch_cls_counts[int(lb)] = epoch_cls_counts.get(int(lb), 0) + 1
             with _autocast(device, amp):
                 losses = loss_fn(model, [im.to(device) for im in images], targets)
             total = sum(losses.values())
@@ -201,8 +212,15 @@ def train(state: StageState, device: torch.device, max_hours: Optional[float] = 
             log.info("it %d/%d loss %.4f %s lr %.2e |g| %.2f", it, max_iters, rec["loss"],
                      " ".join(f"{k}={v:.3f}" for k, v in rec.items() if k.startswith(("rpn_", "roi_"))), rec["lr"], rec["grad_norm"])
             window, wcount = {}, 0
-        if int(t.ckpt_every) and it % int(t.ckpt_every) == 0:
-            _save_last(last_path, state, model, ema, opt, it, time.time() - t0, cfg)
+        if epoch_samples >= ds_len:
+            epoch_idx += 1
+            named_counts = {s2n.get(s, f"slot_{s}"): c for s, c in sorted(epoch_cls_counts.items())}
+            log.info("epoch %d seen %d samples, per-class boxes: %s", epoch_idx, epoch_samples, named_counts)
+            epoch_cls_counts, epoch_samples = {}, 0
+        now_wall = time.time()
+        if (int(t.ckpt_every) and it % int(t.ckpt_every) == 0) or (ckpt_mins > 0 and (now_wall - last_ckpt_wall) >= ckpt_mins * 60.0):
+            _save_last(last_path, state, model, ema, opt, it, now_wall - t0, cfg)
+            last_ckpt_wall = now_wall
     elapsed = time.time() - t0
     completed = it >= max_iters
     log.info("training stopped (%s) at iteration %d after %.1f min", stopped_by, it, elapsed / 60)

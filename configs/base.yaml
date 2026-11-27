@@ -17,14 +17,17 @@ data:
   num_workers: 2
 
 input:
-  size: 800                         # longest side after resize
+  mode: crop                        # crop | letterbox (crop at native scale during training, full-tile inference)
+  size: 1024                        # full-tile inference size (native 1024x1024)
+  crop_size: 640                    # native-resolution training crop size
   size_divisible: 32
 
 aug:
   hflip: 0.5
   vflip: 0.5
   rot90: true
-  scale_jitter: [0.75, 1.25]
+  scale_jitter: [0.8, 1.25]
+  min_vis: 0.6                      # minimum visible area fraction to keep a cropped/jittered box
   mosaic: 0.3
   color_jitter: 0.2
   color_prob: 0.8
@@ -34,9 +37,9 @@ model:
   fpn: {out_channels: 256, use_p2: true}
   rpn:
     num_convs: 2
-    pre_nms_top_n: 1000
-    post_nms_top_n_train: 300
-    post_nms_top_n_test: 500
+    pre_nms_top_n: 2000
+    post_nms_top_n_train: 500
+    post_nms_top_n_test: 1000
     nms_iou: 0.7
     neg_dilate: 2.0                 # negatives only outside GT boxes dilated by this factor
     neg_min: 64
@@ -52,7 +55,7 @@ model:
     fc_dim: 1024
     embed_dim: 256
     num_slots: 64
-    batch_size_per_image: 128
+    batch_size_per_image: 256
     pos_fraction: 0.25
     pos_iou: 0.5
     neg_iou: 0.1
@@ -65,7 +68,7 @@ model:
     neg_obj_weight: 0.1             # backwards-compatible alias
     ignore_high_obj_negatives: true # down-weight negatives on regions model scores as high-objectness
     high_obj_thresh: 0.3            # objectness threshold for ignoring background target
-    detections_per_img: 300
+    detections_per_img: 500
   mining:
     enable: true
     start_frac: 0.1                 # fraction of schedule before mining starts (when warmup_iters is null)
@@ -102,11 +105,17 @@ train:
   ema_decay: 0.9998
   ema_warmup: true
   ckpt_every: 1000
+  ckpt_every_minutes: 30.0          # wall-clock periodic checkpoint interval in minutes
   log_every: 20
   resume: true
   max_hours: null
   device: auto
   eval_at_end: true
+  rfs_enable: true                  # repeat-factor sampling at tile level for Stage 1
+  rfs_threshold: 0.01
+  empty_tile_weight: 0.25           # keep empty tiles at reduced rate (default 25%)
+  class_weight_cap: 5.0             # cap for per-class loss reweighting
+  class_weight_power: 0.5
   lr_mult: {backbone: 1.0, fpn: 1.0, rpn: 1.0, roi_head: 1.0}
 
 freeze:
@@ -142,13 +151,15 @@ imprint:
 eval:
   retention: true
   val_frac: 0.1
+  max_base_map_drop: 0.15           # fail if base-class mAP drops >15% relative (when enforce_retention=true)
+  enforce_retention: false
 
 infer:
   tta: true
   min_known_score: 0.01
-  topk_known: 300
+  topk_known: 500
   topk_classes: 2                   # classes kept per RoI before NMS
-  known_nms_iou: 0.5
+  known_nms_iou: 0.5                # class-aware NMS IoU (0.5 default; 0.6 option for packed scenes)
   unk_nms_iou: 0.5
   conflict_iou: 0.5
   wbf_iou: 0.55

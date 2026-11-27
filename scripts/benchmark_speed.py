@@ -36,15 +36,15 @@ def benchmark_config(
     timed: int = 5,
     backbone_name: str = "resnet50",
 ) -> Dict[str, Any]:
-    cfg = load_config(
-        [str(REPO_ROOT / "configs" / "base.yaml")],
-        [
-            f"input.size={size}",
-            f"model.fpn.use_p2={str(use_p2).lower()}",
-            f"model.backbone.name={backbone_name}",
-            "train.amp=true" if not is_cpu else "train.amp=false",
-        ],
-    )
+    ov = [
+        f"input.size={size}",
+        f"model.fpn.use_p2={str(use_p2).lower()}",
+        f"model.backbone.name={backbone_name}",
+        "train.amp=true" if not is_cpu else "train.amp=false",
+    ]
+    if is_cpu:
+        ov += ["model.roi_head.batch_size_per_image=64", "model.rpn.pre_nms_top_n=200", "model.rpn.post_nms_top_n_train=100"]
+    cfg = load_config([str(REPO_ROOT / "configs" / "base.yaml")], ov)
 
     if device.type == "cuda":
         torch.cuda.empty_cache()

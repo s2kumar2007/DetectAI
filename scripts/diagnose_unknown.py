@@ -160,13 +160,16 @@ def diagnose_checkpoint(
     gt = records_to_gt(val)
     score_res = score_predictions(df, gt, known_names)
 
+    per_cls = {k: round(float(v), 4) for k, v in sorted(score_res.ap_per_class.items())}
     metrics = {
         "map_k": round(float(score_res.map_k), 4),
+        "mean_base_ap": round(float(score_res.map_k), 4),
         "u_rec": round(float(score_res.u_rec), 4),
         "u_prec": round(float(score_res.u_prec), 4),
         "u_f1": round(float(score_res.u_f1), 4),
         "oe_score": round(float(score_res.oe_score), 4),
         "n_unknown_pred": int(score_res.n_unknown_pred),
+        "per_class_ap": per_cls,
     }
 
     return {
@@ -208,7 +211,14 @@ def format_markdown(data: Dict[str, Any]) -> str:
         f"| **OE-Score** | {m['oe_score']:.4f} |",
         f"| **Unknown Preds** | {m['n_unknown_pred']} |",
         "",
+        "## Per-Class AP (Validation Split)",
+        "",
+        "| Class | AP@0.5 |",
+        "| :--- | :---: |",
     ]
+    for cname, ap_val in m.get("per_class_ap", {}).items():
+        lines.append(f"| {cname} | {ap_val:.4f} |")
+    lines.append("")
     return "\n".join(lines)
 
 

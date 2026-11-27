@@ -102,6 +102,7 @@ class RoIHead(nn.Module):
         self.box = nn.Linear(int(cfg.fc_dim), 4)
         self.obj = nn.Linear(int(cfg.fc_dim), 1)
         self.cls = CosineClassifier(int(cfg.num_slots), int(cfg.embed_dim), float(cfg.init_scale), float(cfg.max_scale))
+        self.register_buffer("class_weights", torch.ones(int(cfg.num_slots), dtype=torch.float32), persistent=False)
         self.maha = RunningMahalanobis(int(cfg.embed_dim), maha_momentum) if use_maha else None
         for m in (self.fc1, self.fc2, self.embed):
             nn.init.kaiming_uniform_(m.weight, a=1)
@@ -181,7 +182,7 @@ class RoIHead(nn.Module):
 
         # --- classification (positives only; unlabelled / background RoIs never get a known label)
         if is_pos.any():
-            loss_cls = F.cross_entropy(logits[is_pos], labels[is_pos])
+            loss_cls = F.cross_entropy(logits[is_pos], labels[is_pos], weight=self.class_weights.to(logits.device))
             loss_box = F.smooth_l1_loss(deltas[is_pos], encode_boxes(rois[is_pos], tgt_boxes[is_pos]), beta=1 / 9, reduction="sum") / int(is_pos.sum())
             cos_own = cos[is_pos].gather(1, labels[is_pos].unsqueeze(1)).squeeze(1)
             margin_known = F.relu(float(m.margin_known) - cos_own).mean()

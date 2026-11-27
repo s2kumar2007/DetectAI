@@ -25,18 +25,43 @@ def make_split(
     seed: int = 0,
     class_list: Optional[Sequence[str]] = None,
     min_val_images_per_heldout: int = 2,
+    holdout_classes: Optional[Sequence[str]] = None,
 ) -> dict:
     rng = np.random.default_rng(seed)
     counts = Counter(l for r in records for l in r.labels)
     img_count = Counter(l for r in records for l in set(r.labels))
     pool = [c for c in (class_list or sorted(counts)) if counts.get(c, 0) > 0]
-    if n_holdout > len(pool) - 1 and n_holdout > 0:
-        raise ValueError(f"cannot hold out {n_holdout} of {len(pool)} classes (need at least one known class)")
-    # prefer classes with enough images so both train and val keep instances
-    eligible = [c for c in pool if img_count[c] >= 3] or pool
-    if len(eligible) < n_holdout:
-        eligible = pool
-    heldout = sorted(rng.choice(eligible, size=n_holdout, replace=False).tolist()) if n_holdout > 0 else []
+    if holdout_classes is not None and len(holdout_classes) > 0:
+        resolved: List[str] = []
+        for tok in holdout_classes:
+            s = str(tok).strip()
+            if s.isdigit() and class_list is not None and 0 <= int(s) < len(class_list):
+                resolved.append(class_list[int(s)])
+            else:
+                resolved.append(s)
+        missing = [c for c in resolved if c not in pool]
+        if missing:
+            raise ValueError(f"holdout_classes not present in data: {missing}")
+        heldout = sorted(dict.fromkeys(resolved))
+        n_holdout = len(heldout)
+    else:
+        if n_holdout > len(pool) - 1 and n_holdout > 0:
+            raise ValueError(f"cannot hold out {n_holdout} of {len(pool)} classes (need at least one known class)")
+        # Exclude top-2 most frequent classes when enough classes exist
+        top2 = {c for c, _ in sorted(((c, counts[c]) for c in pool), key=lambda kv: -kv[1])[:2]} if len(pool) > n_holdout + 2 else set()
+        non_top2 = [c for c in pool if c not in top2]
+        # Prefer classes with 1,000-5,000 boxes, never < 500 boxes when available
+        mid_band = [c for c in non_top2 if 1000 <= counts[c] <= 5000 and img_count[c] >= 3]
+        ge_500 = [c for c in non_top2 if counts[c] >= 500 and img_count[c] >= 3]
+        if len(mid_band) >= n_holdout:
+            eligible = mid_band
+        elif len(ge_500) >= n_holdout:
+            eligible = ge_500
+        else:
+            eligible = [c for c in non_top2 if img_count[c] >= 3] or non_top2 or pool
+        if len(eligible) < n_holdout:
+            eligible = [c for c in pool if img_count[c] >= 3] or pool
+        heldout = sorted(rng.choice(eligible, size=n_holdout, replace=False).tolist()) if n_holdout > 0 else []
 
     ids = [r.image_id for r in records]
     n_val = max(1, int(round(val_frac * len(ids))))

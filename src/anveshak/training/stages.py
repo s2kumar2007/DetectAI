@@ -16,6 +16,7 @@ from ..utils.offline import enforce_offline
 from ..utils.seed import seed_everything
 from .engine import StageState
 from .evaluate import known_map
+from .sampling import compute_class_loss_weights, compute_repeat_factors
 
 log = get_logger("anveshak.stages")
 
@@ -46,16 +47,52 @@ def prepare_stage1(cfg) -> StageState:
         raise ValueError("no labelled classes found in the Stage 1 training set")
     slotmap = SlotMap()
     slotmap.assign(names, "stage1", start=cfg.slots.start)
-    log.info("Stage 1: %d images (%d val), %d classes -> slots %s", len(train_recs), len(val_recs), len(names), slotmap.active_slots[:5])
+    assert all(0 <= s < 40 for s in slotmap.active_slots), f"Stage 1 slots must be in [0, 40), got {slotmap.active_slots}"
+    log.info("Stage 1: %d images (%d val), %d classes -> slots %s..%s", len(train_recs), len(val_recs), len(names),
+             slotmap.active_slots[0], slotmap.active_slots[-1])
 
     seed_everything(int(cfg.seed), deterministic=False)
     model = build_model(cfg)
     init_hash = assert_stage1_random_init(cfg, model, build_model, int(cfg.seed))  # must run BEFORE slots are activated
     model.activate_slots(slotmap.active_slots)
+
+    sample_weights = None
+    slot_rarity = None
+    if bool(cfg.train.get("rfs_enable", True)):
+        sample_weights, r_cls = compute_repeat_factors(
+            train_recs,
+            slotmap.class_to_slot,
+            t=float(cfg.train.get("rfs_threshold", 0.01)),
+            empty_weight=float(cfg.train.get("empty_tile_weight", 0.25)),
+        )
+        slot_rarity = {slotmap.class_to_slot[c]: float(r) for c, r in r_cls.items() if c in slotmap.class_to_slot}
+        cls_w = compute_class_loss_weights(
+            train_recs,
+            slotmap.class_to_slot,
+            int(cfg.model.roi_head.num_slots),
+            cap=float(cfg.train.get("class_weight_cap", 5.0)),
+            power=float(cfg.train.get("class_weight_power", 0.5)),
+        )
+        model.roi_head.class_weights.copy_(cls_w)
+        log.info("Stage 1 RFS enabled (t=%.3f, empty_w=%.2f, max_r=%.2f, max_cls_w=%.2f)",
+                 float(cfg.train.get("rfs_threshold", 0.01)),
+                 float(cfg.train.get("empty_tile_weight", 0.25)),
+                 max(sample_weights) if sample_weights else 1.0,
+                 float(cls_w.max()))
     seed_everything(int(cfg.seed), deterministic=False)
 
-    ds = DetDataset(train_recs, slotmap.class_to_slot, int(cfg.input.size), train=True, aug=cfg.aug, seed=int(cfg.seed))
+    ds = DetDataset(
+        train_recs,
+        slotmap.class_to_slot,
+        int(cfg.input.size),
+        train=True,
+        aug=cfg.aug,
+        seed=int(cfg.seed),
+        input_mode=str(cfg.input.get("mode", "letterbox")),
+        crop_size=cfg.input.get("crop_size", None),
+        slot_rarity=slot_rarity,
+    )
     state = StageState(cfg=cfg, stage="stage1", model=model, slotmap=slotmap, train_dataset=ds, val_records=val_recs,
-                       split=split, init_hash=init_hash)
+                       split=split, init_hash=init_hash, sample_weights=sample_weights)
     state.report_fn = stage1_report(state)
     return state
